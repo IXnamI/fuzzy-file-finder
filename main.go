@@ -1,41 +1,56 @@
 package main
 
 import (
-	"bufio"
+	"context"
 	"fmt"
 	fff "fuzzy-file-finder/src"
 	"fuzzy-file-finder/src/algos"
 	"fuzzy-file-finder/src/fileTree"
-	"os"
 	"sync"
 	"unicode/utf8"
+
+	"github.com/eiannone/keyboard"
 )
 
 var wg sync.WaitGroup
 
 func main() {
+
+	ctx, cancel := context.WithCancel(context.Background())
 	jobs := make(chan string, 400000)
-	resultsChan := make(chan algos.MatchResult, 10000)
 	query := ""
 	fs := fileTree.CreateDirTreeStruct()
 	root := "C:\\"
-	reader := bufio.NewReader(os.Stdin)
+
+	err := keyboard.Open()
+	if err != nil {
+		panic(err)
+	}
+	defer keyboard.Close()
 
 	fileTree.CreateAsyncJob(root, jobs, fs, 10)
 
 	for {
-		char, _, err := reader.ReadRune()
+		char, key, err := keyboard.GetKey()
 		if err != nil {
+			panic(err)
+		}
+		if key == keyboard.KeyEsc {
 			break
 		}
-
-		if char == 127 && len(query) > 0 {
-			_, size := utf8.DecodeLastRuneInString(query)
-			query = query[:len(query)-size]
-		} else if char == 10 {
+		if key == keyboard.KeyBackspace || key == keyboard.KeyBackspace2 {
+			if len(query) > 0 {
+				_, size := utf8.DecodeLastRuneInString(query)
+				query = query[:len(query)-size]
+			}
+		} else if char >= 32 && char <= 126 {
+			query += string(char)
+			cancel()
+			resultsChan := make(chan algos.MatchResult, 10000)
 			clearScreen()
 			fmt.Printf("Query: %s\n", query)
-			algos.CreateNewWorker(fs, resultsChan, 4, query, &wg)
+			ctx, cancel = context.WithCancel(context.Background())
+			algos.CreateNewWorker(ctx, fs, resultsChan, 4, query, &wg)
 			go func() {
 				defer close(resultsChan)
 				wg.Wait()
@@ -47,9 +62,6 @@ func main() {
 			for _, result := range scoreResults.Holder {
 				fmt.Printf("[%d] %s \n", result.Score, result.Candidate)
 			}
-			break
-		} else if char >= 32 && char <= 126 {
-			query += string(char)
 		}
 	}
 }

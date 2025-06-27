@@ -1,20 +1,26 @@
 package algos
 
 import (
+	"context"
 	"fuzzy-file-finder/src/fileTree"
 	"strings"
 	"sync"
 )
 
-func CreateNewWorker(fs *fileTree.DirTreeHolder, outputChannel chan MatchResult, numWorkers int, query string, wg *sync.WaitGroup) {
+func CreateNewWorker(ctx context.Context, fs *fileTree.DirTreeHolder, outputChannel chan MatchResult, numWorkers int, query string, wg *sync.WaitGroup) {
 	fileTreeResults := make(chan string, 100000)
 	for range numWorkers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for path := range fileTreeResults {
-				if match(query, path) {
-					outputChannel <- Score(query, path)
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					if match(query, path) {
+						outputChannel <- Score(query, path)
+					}
 				}
 			}
 		}()
