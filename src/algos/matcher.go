@@ -7,7 +7,7 @@ import (
 )
 
 func CreateNewWorker(fs *fileTree.DirTreeHolder, outputChannel chan MatchResult, numWorkers int, query string, wg *sync.WaitGroup) {
-	fileTreeResults := make(chan string, 10000)
+	fileTreeResults := make(chan string, 100000)
 	for range numWorkers {
 		wg.Add(1)
 		go func() {
@@ -19,10 +19,12 @@ func CreateNewWorker(fs *fileTree.DirTreeHolder, outputChannel chan MatchResult,
 			}
 		}()
 	}
-	for _, path := range fs.GetSnapShot() {
-		fileTreeResults <- path
-	}
-	close(fileTreeResults)
+	go func() {
+		for _, path := range fs.GetSnapShot() {
+			fileTreeResults <- path
+		}
+		close(fileTreeResults)
+	}()
 }
 
 func match(query, candidate string) bool {
@@ -35,5 +37,6 @@ func match(query, candidate string) bool {
 			i++
 		}
 	}
+
 	return i == len(q)
 }
