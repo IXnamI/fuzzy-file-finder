@@ -34,11 +34,12 @@ func main() {
 	if err := screen.Init(); err != nil {
 		panic(err)
 	}
-	w, _ := screen.Size()
+	w, h := screen.Size()
 	defer screen.Fini()
 	clearScreen()
-	queryStyle = queryStyle.Background(tcell.Color111).Foreground(tcell.ColorBlack)
-	initTerminalStyling(w)
+	queryStyle = queryStyle.Background(tcell.NewRGBColor(122, 162, 247)).Foreground(tcell.ColorBlack)
+	resultsStyle = resultsStyle.Background(tcell.NewRGBColor(59, 66, 97)).Foreground(tcell.NewRGBColor(115, 218, 202))
+	initTerminalStyling(w, h)
 
 	//Matcher and scorer setup
 	ctx, cancel := context.WithCancel(context.Background())
@@ -58,7 +59,12 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				if len(query) == 0 || len(query) == lastQueryLen {
+				if len(query) == 0 {
+					clearResults(w)
+					screen.Show()
+					continue
+				}
+				if len(query) == lastQueryLen {
 					continue
 				}
 				cancel()
@@ -74,6 +80,7 @@ func main() {
 					scoreResults.Add(res)
 				}
 				y := 1
+				clearResults(w)
 				for _, res := range scoreResults.Holder {
 					drawText(1, y, fmt.Sprintf("[%d] %s", res.Score, res.Candidate), resultsStyle)
 					y++
@@ -86,23 +93,28 @@ func main() {
 
 	// Reading user inputs key-by-key
 	for {
-		char, key, err := keyboard.GetKey()
-		if err != nil {
-			panic(err)
-		}
-		if key == keyboard.KeyEsc {
-			ticker.Stop()
-			break
-		}
-		if key == keyboard.KeyBackspace || key == keyboard.KeyBackspace2 {
-			if len(query) > 0 {
-				_, size := utf8.DecodeLastRuneInString(query)
-				query = query[:len(query)-size]
-				lastQueryLen = len(query) + 1
+		ev := screen.PollEvent()
+
+		// Process event
+		switch ev := ev.(type) {
+		case *tcell.EventResize:
+			w, _ = screen.Size()
+			initTerminalStyling(w, h)
+			screen.Show()
+		case *tcell.EventKey:
+			if ev.Key() == tcell.KeyESC || ev.Key() == tcell.KeyCtrlC {
+				ticker.Stop()
+				return
+			} else if ev.Key() == tcell.KeyBackspace || ev.Key() == tcell.KeyBackspace2 {
+				if len(query) > 0 {
+					_, size := utf8.DecodeLastRuneInString(query)
+					query = query[:len(query)-size]
+					lastQueryLen = len(query) + 1
+				}
+			} else if ev.Key() == tcell.KeyRune {
+				query += string(ev.Rune())
+				lastQueryLen = len(query) - 1
 			}
-		} else if char >= 32 && char <= 126 {
-			query += string(char)
-			lastQueryLen = len(query) - 1
 		}
 		clearRow(0, w, queryStyle)
 		drawText(1, 0, fmt.Sprintf("Query: %s", query), queryStyle)
@@ -132,6 +144,21 @@ func setRowStyle(y int, width int, style tcell.Style) {
 	}
 }
 
-func initTerminalStyling(w int) {
+func initTerminalStyling(w int, h int) {
 	setRowStyle(0, w, queryStyle)
+	for i := range h {
+		if i == 0 {
+			continue
+		}
+		setRowStyle(i, w, resultsStyle)
+	}
+}
+
+func clearResults(width int) {
+	for i := range 21 {
+		if i == 0 {
+			continue
+		}
+		clearRow(i, width, resultsStyle)
+	}
 }
