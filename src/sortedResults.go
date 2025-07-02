@@ -31,10 +31,10 @@ func (ra *ResultArray) Add(elem algos.MatchResult) {
 
 func add(ra *ResultArray, elem algos.MatchResult) {
 	insertIndex, _ := slices.BinarySearchFunc(ra.Holder, elem, func(a, b algos.MatchResult) int {
-		if a.Score < b.Score {
+		if a.Score > b.Score {
 			return -1
 		}
-		if a.Score > b.Score {
+		if a.Score < b.Score {
 			return 1
 		}
 		return 0

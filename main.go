@@ -6,7 +6,6 @@ import (
 	fff "fuzzy-file-finder/src"
 	"fuzzy-file-finder/src/algos"
 	"fuzzy-file-finder/src/fileTree"
-	"github.com/eiannone/keyboard"
 	"github.com/gdamore/tcell/v2"
 	"sync"
 	"time"
@@ -14,32 +13,11 @@ import (
 )
 
 var wg sync.WaitGroup
-var screen tcell.Screen
-var queryStyle tcell.Style
-var resultsStyle tcell.Style
 
 func main() {
-	//Keyboard setup
-	err := keyboard.Open()
-	if err != nil {
-		panic(err)
-	}
-	defer keyboard.Close()
-
-	//Screen setup
-	screen, err = tcell.NewScreen()
-	if err != nil {
-		panic(err)
-	}
-	if err := screen.Init(); err != nil {
-		panic(err)
-	}
-	w, h := screen.Size()
-	defer screen.Fini()
-	clearScreen()
-	queryStyle = queryStyle.Background(tcell.NewRGBColor(122, 162, 247)).Foreground(tcell.ColorBlack)
-	resultsStyle = resultsStyle.Background(tcell.NewRGBColor(59, 66, 97)).Foreground(tcell.NewRGBColor(115, 218, 202))
-	initTerminalStyling(w, h)
+	term := fff.NewTerminal()
+	defer term.Stop()
+	term.ClearScreen()
 
 	//Matcher and scorer setup
 	ctx, cancel := context.WithCancel(context.Background())
@@ -51,17 +29,18 @@ func main() {
 	ticker := time.NewTicker(300 * time.Millisecond)
 
 	fileTree.CreateAsyncJob(root, jobs, fs, 10)
-	drawText(1, 0, fmt.Sprintf("Query: %s", query), queryStyle)
-	screen.Show()
+	term.DrawQuery(fmt.Sprintf("Query: %s", query))
+	term.Screen.Show()
 
 	// Poll for updates from results
 	go func() {
 		for {
 			select {
 			case <-ticker.C:
+				term.DrawInfo(fmt.Sprintf("Indexed %d files", len(fs.GetSnapShot())))
 				if len(query) == 0 {
-					clearResults(w)
-					screen.Show()
+					term.ClearResults()
+					term.Screen.Show()
 					continue
 				}
 				if len(query) == lastQueryLen {
@@ -75,90 +54,51 @@ func main() {
 					defer close(resultsChan)
 					wg.Wait()
 				}()
-				scoreResults := fff.NewResultArray(20)
+				scoreResults := fff.NewResultArray(100)
 				for res := range resultsChan {
 					scoreResults.Add(res)
 				}
-				y := 1
-				clearResults(w)
-				for _, res := range scoreResults.Holder {
-					drawText(1, y, fmt.Sprintf("[%d] %s", res.Score, res.Candidate), resultsStyle)
-					y++
-				}
+				term.AppendToResults(scoreResults.Holder)
+				term.DrawResults()
 				lastQueryLen = len(query)
-				screen.Show()
+				term.Screen.Show()
 			}
 		}
 	}()
 
+	term.Screen.Sync()
 	// Reading user inputs key-by-key
 	for {
-		ev := screen.PollEvent()
+		ev := term.Screen.PollEvent()
 
 		// Process event
 		switch ev := ev.(type) {
 		case *tcell.EventResize:
-			w, _ = screen.Size()
-			initTerminalStyling(w, h)
-			screen.Show()
+			term.Resize()
+			term.Screen.Show()
 		case *tcell.EventKey:
-			if ev.Key() == tcell.KeyESC || ev.Key() == tcell.KeyCtrlC {
+			switch ev.Key() {
+			case tcell.KeyESC, tcell.KeyCtrlC:
+				term.DrawDebug(fmt.Sprintf("Escape sequence pressed"))
+				term.Screen.Show()
 				ticker.Stop()
 				return
-			} else if ev.Key() == tcell.KeyBackspace || ev.Key() == tcell.KeyBackspace2 {
+			case tcell.KeyBackspace, tcell.KeyBackspace2:
 				if len(query) > 0 {
 					_, size := utf8.DecodeLastRuneInString(query)
 					query = query[:len(query)-size]
 					lastQueryLen = len(query) + 1
 				}
-			} else if ev.Key() == tcell.KeyRune {
+			case tcell.KeyRune:
 				query += string(ev.Rune())
 				lastQueryLen = len(query) - 1
+			case tcell.KeyUp:
+				term.MovePointer(fff.DirectionUp)
+			case tcell.KeyDown:
+				term.MovePointer(fff.DirectionDown)
 			}
 		}
-		clearRow(0, w, queryStyle)
-		drawText(1, 0, fmt.Sprintf("Query: %s", query), queryStyle)
-		screen.Show()
-	}
-}
-
-func clearScreen() {
-	screen.Clear()
-}
-
-func drawText(x, y int, text string, style tcell.Style) {
-	for i, ch := range text {
-		screen.SetContent(x+i, y, ch, nil, style)
-	}
-}
-
-func clearRow(y int, width int, style tcell.Style) {
-	for x := range width {
-		screen.SetContent(x, y, ' ', nil, style)
-	}
-}
-
-func setRowStyle(y int, width int, style tcell.Style) {
-	for x := range width {
-		screen.SetContent(x, y, ' ', nil, style)
-	}
-}
-
-func initTerminalStyling(w int, h int) {
-	setRowStyle(0, w, queryStyle)
-	for i := range h {
-		if i == 0 {
-			continue
-		}
-		setRowStyle(i, w, resultsStyle)
-	}
-}
-
-func clearResults(width int) {
-	for i := range 21 {
-		if i == 0 {
-			continue
-		}
-		clearRow(i, width, resultsStyle)
+		term.DrawQuery(fmt.Sprintf("Query: %s", query))
+		term.Screen.Show()
 	}
 }
