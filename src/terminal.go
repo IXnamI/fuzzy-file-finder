@@ -3,6 +3,8 @@ package fff
 import (
 	"fmt"
 	"fuzzy-file-finder/src/algos"
+	"log/slog"
+
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -20,7 +22,7 @@ type Terminal struct {
 	InfoStyle           tcell.Style
 	DebugStyle          tcell.Style
 	SelectedStyle       tcell.Style
-	isResultsDisplayed  bool
+	IsResultsDisplayed  bool
 	isCursorDisplayed   bool
 }
 
@@ -47,7 +49,7 @@ func NewTerminal() *Terminal {
 	term := &Terminal{
 		Screen:              screen,
 		CachedResults:       nil,
-		CurrentLineSelected: 2,
+		CurrentLineSelected: 0,
 		ResultsStart:        0,
 		ResultsEnd:          0,
 		PointerStyle:        tcell.StyleDefault.Background(tcell.NewRGBColor(59, 66, 97)).Foreground(tcell.ColorRed),
@@ -56,7 +58,7 @@ func NewTerminal() *Terminal {
 		InfoStyle:           tcell.StyleDefault.Background(tcell.NewRGBColor(59, 66, 97)).Foreground(tcell.NewRGBColor(158, 206, 106)),
 		DebugStyle:          tcell.StyleDefault.Background(tcell.ColorRed).Foreground(tcell.ColorWhite),
 		SelectedStyle:       tcell.StyleDefault.Background(tcell.NewRGBColor(59, 66, 97)).Foreground(tcell.NewRGBColor(115, 218, 202)),
-		isResultsDisplayed:  false,
+		IsResultsDisplayed:  false,
 		isCursorDisplayed:   false,
 	}
 	term.Width, term.Height = screen.Size()
@@ -83,19 +85,27 @@ func (t *Terminal) DrawInfo(info string) {
 }
 
 func (t *Terminal) DrawDebug(debug string) {
-	t.clearRow(infoLinePosition, t.DebugStyle)
-	t.drawText(defaultHorizontalStart, infoLinePosition, debug, t.DebugStyle)
+	t.clearRow(t.Height-1, t.DebugStyle)
+	t.drawText(defaultHorizontalStart, t.Height-1, debug, t.DebugStyle)
 }
 
 func (t *Terminal) AppendToResults(slice []algos.MatchResult) {
-	t.CachedResults = t.CachedResults[:0]
-	t.CachedResults = append(t.CachedResults, slice...)
+	slog.Info("AppendToResults() called")
+	t.CachedResults = slice
 	t.ResultsStart = 0
 	t.ResultsEnd = min(len(slice), t.Height-resultLineBuffer)
+	if t.CurrentLineSelected > t.ResultsEnd-1 {
+		t.CurrentLineSelected = max(t.ResultsEnd-1, 0)
+		slog.Info("Modyfying curr line selected", "t.CurrentLineSelected", t.CurrentLineSelected, "End of slice", t.ResultsEnd-1)
+		slog.Info("Slice info", "len(slice)", len(slice), "slice content", t.CachedResults)
+	}
 }
 
 func (t *Terminal) DrawResults() {
 	t.ClearResults()
+	if len(t.CachedResults) == 0 {
+		return
+	}
 	y := resultLineBuffer
 	currentResults := t.CachedResults[t.ResultsStart:t.ResultsEnd]
 	for _, res := range currentResults {
@@ -103,15 +113,17 @@ func (t *Terminal) DrawResults() {
 		t.drawText(0, y, " ", t.InfoStyle)
 		y++
 	}
+	t.IsResultsDisplayed = true
 	t.drawPointer(t.CurrentLineSelected)
-	t.isResultsDisplayed = true
 }
 
 func (t *Terminal) DrawSelected(prevSelected int) {
-	textPrev := t.CachedResults[t.ResultsStart+prevSelected-resultLineBuffer]
-	text := t.CachedResults[t.ResultsStart+t.CurrentLineSelected-resultLineBuffer]
-	t.drawText(defaultHorizontalStart, prevSelected, fmt.Sprintf("[%d] %s", textPrev.Score, textPrev.Candidate), t.ResultsStyle)
-	t.drawText(defaultHorizontalStart, t.CurrentLineSelected, fmt.Sprintf("[%d] %s", text.Score, text.Candidate), t.SelectedStyle)
+	slog.Info("Attempting to grab prev result", "line", prevSelected)
+	textPrev := t.GetResultAt(prevSelected)
+	slog.Info("Attempting to grab result", "line", t.CurrentLineSelected)
+	text := t.GetResultAt(t.CurrentLineSelected)
+	t.drawText(defaultHorizontalStart, prevSelected+resultLineBuffer, fmt.Sprintf("[%d] %s", textPrev.Score, textPrev.Candidate), t.ResultsStyle)
+	t.drawText(defaultHorizontalStart, t.CurrentLineSelected+resultLineBuffer, fmt.Sprintf("[%d] %s", text.Score, text.Candidate), t.SelectedStyle)
 }
 
 func (t *Terminal) MoveResults(direction Direction) {
@@ -126,28 +138,33 @@ func (t *Terminal) MoveResults(direction Direction) {
 }
 
 func (t *Terminal) MovePointer(direction Direction) {
-	if !t.isResultsDisplayed {
+	if !t.IsResultsDisplayed {
 		return
 	}
-	if direction == DirectionDown && t.ResultsEnd < len(t.CachedResults) && t.CurrentLineSelected == t.Height-resultLineBuffer+1 {
+	if direction == DirectionDown && t.ResultsEnd < len(t.CachedResults) && t.CurrentLineSelected == t.Height-resultLineBuffer-1 {
+		slog.Info("Moving results down")
 		t.MoveResults(DirectionDown)
 		return
-	} else if direction == DirectionUp && t.ResultsStart > 0 && t.CurrentLineSelected == resultLineBuffer {
+	} else if direction == DirectionUp && t.ResultsStart > 0 && t.CurrentLineSelected == 0 {
+		slog.Info("Moving results up")
 		t.MoveResults(DirectionUp)
 		return
 	}
-	if direction == DirectionDown && (t.CurrentLineSelected <= t.Height-resultLineBuffer && t.CurrentLineSelected < t.ResultsEnd+resultLineBuffer-1) {
+	if direction == DirectionDown && (t.CurrentLineSelected < t.Height-resultLineBuffer-1 && t.CurrentLineSelected < t.ResultsEnd-1) {
+		slog.Info("Moving pointer down")
 		t.CurrentLineSelected++
 		t.drawPointer(t.CurrentLineSelected - 1)
-	} else if direction == DirectionUp && t.CurrentLineSelected > resultLineBuffer {
+	} else if direction == DirectionUp && t.CurrentLineSelected > 0 {
+		slog.Info("Moving pointer up")
 		t.CurrentLineSelected--
 		t.drawPointer(t.CurrentLineSelected + 1)
 	}
 }
 
 func (t *Terminal) drawPointer(prevLine int) {
-	t.drawText(0, prevLine, " ", t.PointerStyle)
-	t.drawText(0, t.CurrentLineSelected, fmt.Sprintf(">"), t.PointerStyle)
+	slog.Info("Attempting to draw pointer", "line", t.CurrentLineSelected)
+	t.drawText(0, prevLine+resultLineBuffer, " ", t.PointerStyle)
+	t.drawText(0, t.CurrentLineSelected+resultLineBuffer, fmt.Sprintf(">"), t.PointerStyle)
 	t.DrawSelected(prevLine)
 	t.isCursorDisplayed = true
 }
@@ -159,12 +176,27 @@ func (t *Terminal) ClearResults() {
 		}
 		t.clearRow(i, t.ResultsStyle)
 	}
-	t.isResultsDisplayed = false
+	t.IsResultsDisplayed = false
 }
 
 func (t *Terminal) ClearScreen() {
 	t.Screen.Clear()
 }
+
+func (t *Terminal) GetCurrentSelected() *algos.MatchResult {
+	return t.GetResultAt(t.CurrentLineSelected)
+}
+
+func (t *Terminal) GetResultAt(index int) *algos.MatchResult {
+	if !t.IsResultsDisplayed {
+		return nil
+	}
+	if t.ResultsEnd <= t.ResultsStart+index {
+		slog.Error("Attempting to grab impossible index", "t.CurrentLineSelected", t.CurrentLineSelected, "results", t.CachedResults)
+	}
+	return &t.CachedResults[t.ResultsStart+index]
+}
+
 func (t *Terminal) clearRow(row int, style tcell.Style) {
 	for x := range t.Width {
 		t.Screen.SetContent(x, row, ' ', nil, style)

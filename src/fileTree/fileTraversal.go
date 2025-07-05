@@ -8,10 +8,12 @@ import (
 
 var internalWg sync.WaitGroup
 
-func CreateAsyncJob(root string, jobs chan string, fs *DirTreeHolder, numWorkers int) {
+func CreateAsyncJob(root []string, jobs chan string, fs *DirTreeHolder, numWorkers int) {
 	output := make(chan string, 10000)
-	internalWg.Add(1)
-	jobs <- root
+	for _, path := range root {
+		internalWg.Add(1)
+		jobs <- path
+	}
 	for range numWorkers {
 		go func() {
 			for path := range jobs {

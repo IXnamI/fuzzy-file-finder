@@ -14,6 +14,7 @@ require (
 )
 
 require (
+	github.com/atotto/clipboard v0.1.4
 	github.com/gdamore/tcell/v2 v2.8.1
 	golang.org/x/sys v0.29.0 // indirect
 )

@@ -5,8 +5,8 @@ import (
 )
 
 type MatchResult struct {
-	Score     int
 	Candidate string
+	Score     int
 }
 
 // Naive scoring, should still be relatively fast due to O(n)
@@ -18,7 +18,7 @@ func Score(query, candidate string) MatchResult {
 	score := 0
 	queryIndex := 0
 	for i := range len(t) {
-		if i < len(t)-len(q) {
+		if i <= len(t)-len(q) {
 			slice := t[i:(i + len(q))]
 			if strings.Compare(slice, q) == 0 {
 				return MatchResult{Score: 20 * len(q), Candidate: candidate}

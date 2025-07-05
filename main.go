@@ -6,29 +6,49 @@ import (
 	fff "fuzzy-file-finder/src"
 	"fuzzy-file-finder/src/algos"
 	"fuzzy-file-finder/src/fileTree"
-	"github.com/gdamore/tcell/v2"
+	"log"
+	"log/slog"
+	"os"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"github.com/atotto/clipboard"
+	"github.com/gdamore/tcell/v2"
 )
 
 var wg sync.WaitGroup
 
 func main() {
+	f, err := os.Create("output.log")
+	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	handler := slog.NewTextHandler(f, nil)
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+
 	term := fff.NewTerminal()
 	defer term.Stop()
 	term.ClearScreen()
 
+	//inputStream := fff.NewEventStream(100)
+
 	//Matcher and scorer setup
 	ctx, cancel := context.WithCancel(context.Background())
-	jobs := make(chan string, 400000)
-	lastQueryLen := 0
+	jobs := make(chan string, 800000)
+	lastQuery := ""
 	query := ""
+	//internalQuery := ""
 	fs := fileTree.CreateDirTreeStruct()
-	root := "C:\\"
-	ticker := time.NewTicker(300 * time.Millisecond)
+	root := getDrives()
+	ticker := time.NewTicker(200 * time.Millisecond)
 
 	fileTree.CreateAsyncJob(root, jobs, fs, 10)
+
 	term.DrawQuery(fmt.Sprintf("Query: %s", query))
 	term.Screen.Show()
 
@@ -37,15 +57,18 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				term.DrawInfo(fmt.Sprintf("Indexed %d files", len(fs.GetSnapShot())))
+				if !term.IsResultsDisplayed {
+					term.DrawInfo(fmt.Sprintf("Indexed %d files", len(fs.GetSnapShot())))
+				}
 				if len(query) == 0 {
 					term.ClearResults()
 					term.Screen.Show()
 					continue
 				}
-				if len(query) == lastQueryLen {
+				if strings.Compare(query, lastQuery) == 0 {
 					continue
 				}
+				lastQuery = query
 				cancel()
 				resultsChan := make(chan algos.MatchResult, 10000)
 				ctx, cancel = context.WithCancel(context.Background())
@@ -54,13 +77,13 @@ func main() {
 					defer close(resultsChan)
 					wg.Wait()
 				}()
-				scoreResults := fff.NewResultArray(100)
+				scoreResults := fff.NewResultArray(1000)
 				for res := range resultsChan {
 					scoreResults.Add(res)
 				}
 				term.AppendToResults(scoreResults.Holder)
 				term.DrawResults()
-				lastQueryLen = len(query)
+				term.DrawInfo(fmt.Sprintf("Showing %d/%d", len(scoreResults.Holder), len(fs.GetSnapShot())))
 				term.Screen.Show()
 			}
 		}
@@ -70,7 +93,6 @@ func main() {
 	// Reading user inputs key-by-key
 	for {
 		ev := term.Screen.PollEvent()
-
 		// Process event
 		switch ev := ev.(type) {
 		case *tcell.EventResize:
@@ -79,19 +101,28 @@ func main() {
 		case *tcell.EventKey:
 			switch ev.Key() {
 			case tcell.KeyESC, tcell.KeyCtrlC:
-				term.DrawDebug(fmt.Sprintf("Escape sequence pressed"))
 				term.Screen.Show()
 				ticker.Stop()
 				return
+			case tcell.KeyEnter:
+				result := term.GetCurrentSelected()
+				if result == nil {
+					continue
+				}
+				err := clipboard.WriteAll(result.Candidate)
+				if err != nil {
+					slog.Error("Error copying to clipboard", "Error: ", err)
+				}
+				term.DrawInfo(fmt.Sprintf("Result pasted into system's clipboard"))
 			case tcell.KeyBackspace, tcell.KeyBackspace2:
+				lastQuery = query
 				if len(query) > 0 {
 					_, size := utf8.DecodeLastRuneInString(query)
 					query = query[:len(query)-size]
-					lastQueryLen = len(query) + 1
 				}
 			case tcell.KeyRune:
+				lastQuery = query
 				query += string(ev.Rune())
-				lastQueryLen = len(query) - 1
 			case tcell.KeyUp:
 				term.MovePointer(fff.DirectionUp)
 			case tcell.KeyDown:
@@ -101,4 +132,31 @@ func main() {
 		term.DrawQuery(fmt.Sprintf("Query: %s", query))
 		term.Screen.Show()
 	}
+}
+
+func getDrives() []string {
+	kernel32, _ := syscall.LoadLibrary("kernel32.dll")
+	getLogicalDrivesHandle, _ := syscall.GetProcAddress(kernel32, "GetLogicalDrives")
+
+	var drives []string
+
+	if ret, _, callErr := syscall.SyscallN(uintptr(getLogicalDrivesHandle), 0, 0, 0, 0); callErr != 0 {
+		slog.Error("Fail to get drives")
+	} else {
+		drives = bitsToDrives(uint32(ret))
+	}
+	return drives
+}
+
+func bitsToDrives(bitMap uint32) (drives []string) {
+	availableDrives := []string{"A:\\", "B:\\", "C:\\", "D:\\", "E:\\", "F:\\", "G:\\", "H:\\", "I:\\", "J:\\", "K:\\", "L:\\", "M:\\", "N:\\", "O:\\", "P:\\", "Q:\\", "R:\\", "S:\\", "T:\\", "U:\\", "V:\\", "W:\\", "X:\\", "Y:\\", "Z:\\"}
+
+	for i := range availableDrives {
+		if bitMap&1 == 1 {
+			drives = append(drives, availableDrives[i])
+		}
+		bitMap >>= 1
+	}
+
+	return
 }
