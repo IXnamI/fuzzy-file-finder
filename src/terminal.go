@@ -109,7 +109,7 @@ func (t *Terminal) DrawResults() {
 	y := resultLineBuffer
 	currentResults := t.CachedResults[t.ResultsStart:t.ResultsEnd]
 	for _, res := range currentResults {
-		t.drawText(defaultHorizontalStart, y, fmt.Sprintf("[%d] %s", res.Score, res.Candidate), t.ResultsStyle)
+		t.drawResultText(defaultHorizontalStart, y, res, t.ResultsStyle, t.ResultsStyle.Foreground(tcell.ColorWhite))
 		t.drawText(0, y, " ", t.InfoStyle)
 		y++
 	}
@@ -122,8 +122,8 @@ func (t *Terminal) DrawSelected(prevSelected int) {
 	textPrev := t.GetResultAt(prevSelected)
 	slog.Info("Attempting to grab result", "line", t.CurrentLineSelected)
 	text := t.GetResultAt(t.CurrentLineSelected)
-	t.drawText(defaultHorizontalStart, prevSelected+resultLineBuffer, fmt.Sprintf("[%d] %s", textPrev.Score, textPrev.Candidate), t.ResultsStyle)
-	t.drawText(defaultHorizontalStart, t.CurrentLineSelected+resultLineBuffer, fmt.Sprintf("[%d] %s", text.Score, text.Candidate), t.SelectedStyle)
+	t.drawResultText(defaultHorizontalStart, prevSelected+resultLineBuffer, *textPrev, t.ResultsStyle, t.ResultsStyle.Foreground(tcell.ColorWhite))
+	t.drawResultText(defaultHorizontalStart, t.CurrentLineSelected+resultLineBuffer, *text, t.SelectedStyle, t.SelectedStyle.Foreground(tcell.ColorWhite))
 }
 
 func (t *Terminal) MoveResults(direction Direction) {
@@ -205,6 +205,22 @@ func (t *Terminal) clearRow(row int, style tcell.Style) {
 
 func (t *Terminal) drawText(xCell int, yCell int, text string, style tcell.Style) {
 	for i, ch := range text {
+		t.Screen.SetContent(xCell+i, yCell, ch, nil, style)
+	}
+}
+
+func (t *Terminal) drawResultText(xCell int, yCell int, text algos.MatchResult, style tcell.Style, matchStyle tcell.Style) {
+	highlightIndex := text.MatchIndex
+	matchIndex := 0
+	//slog.Info("Attempting to draw highlighted results", "text", text.Candidate, "highlightedIndex", highlightIndex)
+	for i, ch := range text.Candidate {
+		if matchIndex < len(highlightIndex) {
+			if i == highlightIndex[matchIndex] {
+				t.Screen.SetContent(xCell+i, yCell, ch, nil, matchStyle)
+				matchIndex++
+				continue
+			}
+		}
 		t.Screen.SetContent(xCell+i, yCell, ch, nil, style)
 	}
 }
