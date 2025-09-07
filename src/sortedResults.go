@@ -37,6 +37,12 @@ func add(ra *ResultArray, elem algos.MatchResult) {
 		if a.Score < b.Score {
 			return 1
 		}
+		if a.FirstMatch > b.FirstMatch {
+			return 1
+		}
+		if a.FirstMatch < b.FirstMatch {
+			return -1
+		}
 		return 0
 	})
 	ra.Holder = slices.Insert(ra.Holder, insertIndex, elem)

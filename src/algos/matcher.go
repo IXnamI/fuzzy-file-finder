@@ -43,6 +43,5 @@ func match(query, candidate string) bool {
 			i++
 		}
 	}
-
 	return i == len(q)
 }

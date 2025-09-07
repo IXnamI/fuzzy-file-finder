@@ -42,10 +42,10 @@ func main() {
 	jobs := make(chan string, 800000)
 	lastQuery := ""
 	query := ""
-	//internalQuery := ""
 	fs := fileTree.CreateDirTreeStruct()
 	root := getDrives()
 	ticker := time.NewTicker(200 * time.Millisecond)
+	prevResultsLength := 0
 
 	fileTree.CreateAsyncJob(root, jobs, fs, 10)
 
@@ -57,8 +57,13 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
+				if term.IsResultsDisplayed {
+					term.DrawInfo(fmt.Sprintf("Showing %d/%d", prevResultsLength, len(fs.GetSnapShot())))
+					term.Screen.Show()
+				}
 				if !term.IsResultsDisplayed {
 					term.DrawInfo(fmt.Sprintf("Indexed %d files", len(fs.GetSnapShot())))
+					term.Screen.Show()
 				}
 				if len(query) == 0 {
 					term.ClearResults()
@@ -84,6 +89,7 @@ func main() {
 				term.AppendToResults(scoreResults.Holder)
 				term.DrawResults()
 				term.DrawInfo(fmt.Sprintf("Showing %d/%d", len(scoreResults.Holder), len(fs.GetSnapShot())))
+				prevResultsLength = len(scoreResults.Holder)
 				term.Screen.Show()
 			}
 		}
@@ -98,6 +104,8 @@ func main() {
 		case *tcell.EventResize:
 			term.Resize()
 			term.Screen.Show()
+		case *tcell.EventMouse:
+			slog.Info("Mouse event received", "buttons", ev.Buttons())
 		case *tcell.EventKey:
 			switch ev.Key() {
 			case tcell.KeyESC, tcell.KeyCtrlC:

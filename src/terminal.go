@@ -212,7 +212,7 @@ func (t *Terminal) drawText(xCell int, yCell int, text string, style tcell.Style
 func (t *Terminal) drawResultText(xCell int, yCell int, text algos.MatchResult, style tcell.Style, matchStyle tcell.Style) {
 	highlightIndex := text.MatchIndex
 	matchIndex := 0
-	//slog.Info("Attempting to draw highlighted results", "text", text.Candidate, "highlightedIndex", highlightIndex)
+	//output := fmt.Sprintf("[%d] %s", text.Score, text.Candidate)
 	for i, ch := range text.Candidate {
 		if matchIndex < len(highlightIndex) {
 			if i == highlightIndex[matchIndex] {
