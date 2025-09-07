@@ -2,41 +2,115 @@ package algos
 
 import (
 	"strings"
+	"unicode"
 )
 
 type MatchResult struct {
-	Candidate  string
 	Score      int
+	Candidate  string
 	MatchIndex []int
+	FirstMatch int
 }
 
-// Naive scoring, should still be relatively fast due to O(n)
 func Score(query, candidate string) MatchResult {
-
 	q := strings.ToLower(query)
 	t := strings.ToLower(candidate)
-	score := 0
-	queryIndex := 0
-	matchIndex := make([]int, 0, len(query))
 
-	for i := range len(t) {
-		if i <= len(t)-len(q) {
-			slice := t[i:(i + len(q))]
-			if strings.Compare(slice, q) == 0 {
-				return MatchResult{Score: 20 * len(q), Candidate: candidate, MatchIndex: spread(i, i+len(q))}
-			}
-		}
-		if queryIndex == len(q) {
-			continue
-		}
-		if q[queryIndex] == t[i] {
-			score += 10
-			queryIndex++
-			matchIndex = append(matchIndex, i)
+	queryIndex := 0
+	lastMatchIndex := -2
+	matchIndex := make([]int, 0, len(q))
+	score := 0
+	firstMatch := -1
+
+	if strings.Contains(t, q) {
+		i := strings.Index(t, q)
+		return MatchResult{
+			Score:      100,
+			Candidate:  candidate,
+			MatchIndex: spread(i, i+len(q)),
+			FirstMatch: i,
 		}
 	}
-	//slog.Info("returning matched result", "Candidate: ", candidate, "matchIndex", matchIndex)
-	return MatchResult{Score: score, Candidate: candidate, MatchIndex: matchIndex}
+
+	for i := 0; i < len(t); i++ {
+		if queryIndex >= len(q) {
+			break
+		}
+		if t[i] == q[queryIndex] {
+			matchIndex = append(matchIndex, i)
+
+			if lastMatchIndex == i-1 {
+				score += 15
+			} else {
+				score += 10
+			}
+
+			if i == 0 {
+				score += 10
+			}
+
+			if i > 0 && !unicode.IsLetter(rune(t[i-1])) {
+				score += 5
+			}
+
+			if lastMatchIndex != -2 && i-lastMatchIndex > 1 {
+				score -= (i - lastMatchIndex) / 5
+			}
+
+			if firstMatch == -1 {
+				firstMatch = i
+			}
+
+			lastMatchIndex = i
+			queryIndex++
+		}
+	}
+
+	if len(matchIndex) > 0 {
+		chunkLen := 1
+		maxChunk := 1
+		for i := 1; i < len(matchIndex); i++ {
+			if matchIndex[i] == matchIndex[i-1]+1 {
+				chunkLen++
+			} else {
+				if chunkLen > maxChunk {
+					maxChunk = chunkLen
+				}
+				chunkLen = 1
+			}
+		}
+		if chunkLen > maxChunk {
+			maxChunk = chunkLen
+		}
+		if maxChunk >= 4 {
+			score += maxChunk * 4
+		}
+	}
+
+	lengthPenalty := len(candidate) - len(query)
+	if lengthPenalty > 0 {
+		score -= lengthPenalty / 4
+	}
+
+	maxScore := 15*len(q) + 10 + 5
+	if score < 0 {
+		score = 0
+	}
+	if score > maxScore {
+		score = maxScore
+	}
+	normalized := int(float64(score) / float64(maxScore) * 100)
+
+	if normalized >= 100 {
+		normalized = 99
+	}
+
+	return MatchResult{
+		Score:      normalized,
+		Candidate:  candidate,
+		MatchIndex: matchIndex,
+		FirstMatch: firstMatch,
+	}
 }
 
 func spread(start int, end int) []int {
