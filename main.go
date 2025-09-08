@@ -122,7 +122,10 @@ func main() {
 				if err != nil {
 					slog.Error("Error copying to clipboard", "Error: ", err)
 				}
-				openInExplorer(result.Candidate)
+				err = openInExplorer(result.Candidate)
+				if err != nil {
+					slog.Error("Error opening file in Explorer", "Error: ", err)
+				}
 			case tcell.KeyBackspace, tcell.KeyBackspace2:
 				lastQuery = query
 				if len(query) > 0 {
