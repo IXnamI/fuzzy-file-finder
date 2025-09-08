@@ -9,6 +9,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"syscall"
@@ -121,7 +122,7 @@ func main() {
 				if err != nil {
 					slog.Error("Error copying to clipboard", "Error: ", err)
 				}
-				term.DrawInfo(fmt.Sprintf("Result pasted into system's clipboard"))
+				openInExplorer(result.Candidate)
 			case tcell.KeyBackspace, tcell.KeyBackspace2:
 				lastQuery = query
 				if len(query) > 0 {
@@ -167,4 +168,13 @@ func bitsToDrives(bitMap uint32) (drives []string) {
 	}
 
 	return
+}
+
+func openInExplorer(path string) error {
+	cmd := exec.Command("explorer", "/select,"+path)
+	err := cmd.Start()
+	if err != nil {
+		return err
+	}
+	return nil
 }
