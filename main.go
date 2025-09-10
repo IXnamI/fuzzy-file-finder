@@ -106,7 +106,23 @@ func main() {
 			term.Resize()
 			term.Screen.Show()
 		case *tcell.EventMouse:
-			slog.Info("Mouse event received", "buttons", ev.Buttons())
+			btn := ev.Buttons()
+			if btn&tcell.Button1 != 0 {
+				slog.Info("Left click was received")
+				_, y := ev.Position()
+				term.SetSelected(y)
+				term.Screen.Show()
+			}
+			if btn&tcell.WheelUp != 0 {
+				slog.Info("Scroll up was received")
+				term.MovePointer(fff.DirectionUp)
+				term.Screen.Show()
+			}
+			if btn&tcell.WheelDown != 0 {
+				slog.Info("Scroll down was received")
+				term.MovePointer(fff.DirectionDown)
+				term.Screen.Show()
+			}
 		case *tcell.EventKey:
 			switch ev.Key() {
 			case tcell.KeyESC, tcell.KeyCtrlC:
@@ -140,6 +156,8 @@ func main() {
 			case tcell.KeyDown:
 				term.MovePointer(fff.DirectionDown)
 			}
+		default:
+			slog.Info("Something was received", "ev", ev)
 		}
 		term.DrawQuery(fmt.Sprintf("Query: %s", query))
 		term.Screen.Show()

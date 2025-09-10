@@ -40,6 +40,8 @@ const (
 
 func NewTerminal() *Terminal {
 	screen, err := tcell.NewScreen()
+	screen.EnableMouse()
+	screen.EnablePaste()
 	if err != nil {
 		panic(err)
 	}
@@ -90,14 +92,14 @@ func (t *Terminal) DrawDebug(debug string) {
 }
 
 func (t *Terminal) AppendToResults(slice []algos.MatchResult) {
-	slog.Info("AppendToResults() called")
+	// slog.Info("AppendToResults() called")
 	t.CachedResults = slice
 	t.ResultsStart = 0
 	t.ResultsEnd = min(len(slice), t.Height-resultLineBuffer)
 	if t.CurrentLineSelected > t.ResultsEnd-1 {
 		t.CurrentLineSelected = max(t.ResultsEnd-1, 0)
-		slog.Info("Modyfying curr line selected", "t.CurrentLineSelected", t.CurrentLineSelected, "End of slice", t.ResultsEnd-1)
-		slog.Info("Slice info", "len(slice)", len(slice), "slice content", t.CachedResults)
+		/* slog.Info("Modyfying curr line selected", "t.CurrentLineSelected", t.CurrentLineSelected, "End of slice", t.ResultsEnd-1)
+		slog.Info("Slice info", "len(slice)", len(slice), "slice content", t.CachedResults) */
 	}
 }
 
@@ -118,9 +120,9 @@ func (t *Terminal) DrawResults() {
 }
 
 func (t *Terminal) DrawSelected(prevSelected int) {
-	slog.Info("Attempting to grab prev result", "line", prevSelected)
+	// slog.Info("Attempting to grab prev result", "line", prevSelected)
 	textPrev := t.GetResultAt(prevSelected)
-	slog.Info("Attempting to grab result", "line", t.CurrentLineSelected)
+	// slog.Info("Attempting to grab result", "line", t.CurrentLineSelected)
 	text := t.GetResultAt(t.CurrentLineSelected)
 	t.drawResultText(defaultHorizontalStart, prevSelected+resultLineBuffer, *textPrev, t.ResultsStyle, t.ResultsStyle.Foreground(tcell.ColorWhite))
 	t.drawResultText(defaultHorizontalStart, t.CurrentLineSelected+resultLineBuffer, *text, t.SelectedStyle, t.SelectedStyle.Foreground(tcell.ColorWhite))
@@ -161,8 +163,13 @@ func (t *Terminal) MovePointer(direction Direction) {
 	}
 }
 
+func (t *Terminal) SetSelected(lineNumber int) {
+	t.CurrentLineSelected = lineNumber - resultLineBuffer
+	t.DrawResults()
+}
+
 func (t *Terminal) drawPointer(prevLine int) {
-	slog.Info("Attempting to draw pointer", "line", t.CurrentLineSelected)
+	// slog.Info("Attempting to draw pointer", "line", t.CurrentLineSelected)
 	t.drawText(0, prevLine+resultLineBuffer, " ", t.PointerStyle)
 	t.drawText(0, t.CurrentLineSelected+resultLineBuffer, fmt.Sprintf(">"), t.PointerStyle)
 	t.DrawSelected(prevLine)
