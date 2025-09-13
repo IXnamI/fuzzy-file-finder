@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -22,8 +23,19 @@ import (
 
 var wg sync.WaitGroup
 
+type AppArgs struct {
+	path           string
+	checkGitIgnore bool
+}
+
+var UserArgs = &AppArgs{
+	path:           "",
+	checkGitIgnore: true,
+}
+
 func main() {
-	f, err := os.Create("output.log")
+	args := os.Args[1:]
+	f, err := os.OpenFile("output.log", os.O_RDWR|os.O_APPEND|os.O_CREATE, 0644)
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)
 	}
@@ -31,7 +43,13 @@ func main() {
 	handler := slog.NewTextHandler(f, nil)
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
-
+	if len(args) > 0 {
+		slog.Info("Args' length > 0")
+		parseArgs(args)
+		slog.Info("User path", "path", UserArgs.path)
+		UserArgs.path = normalizePathString(UserArgs.path)
+		slog.Info("Normalized path", "normalized", UserArgs.path)
+	}
 	term := fff.NewTerminal()
 	defer term.Stop()
 	term.ClearScreen()
@@ -44,7 +62,12 @@ func main() {
 	lastQuery := ""
 	query := ""
 	fs := fileTree.CreateDirTreeStruct()
-	root := getDrives()
+	var root []string
+	if strings.Compare(UserArgs.path, "") == 0 {
+		root = getDrives()
+	} else {
+		root = append([]string{}, UserArgs.path)
+	}
 	ticker := time.NewTicker(200 * time.Millisecond)
 	prevResultsLength := 0
 
@@ -108,18 +131,15 @@ func main() {
 		case *tcell.EventMouse:
 			btn := ev.Buttons()
 			if btn&tcell.Button1 != 0 {
-				slog.Info("Left click was received")
 				_, y := ev.Position()
 				term.SetSelected(y)
 				term.Screen.Show()
 			}
 			if btn&tcell.WheelUp != 0 {
-				slog.Info("Scroll up was received")
 				term.MovePointer(fff.DirectionUp)
 				term.Screen.Show()
 			}
 			if btn&tcell.WheelDown != 0 {
-				slog.Info("Scroll down was received")
 				term.MovePointer(fff.DirectionDown)
 				term.Screen.Show()
 			}
@@ -198,4 +218,32 @@ func openInExplorer(path string) error {
 		return err
 	}
 	return nil
+}
+
+func parseArgs(args []string) {
+	prevArgBinding := false
+	for _, arg := range args {
+		switch arg {
+		case "--nogitignore":
+			UserArgs.checkGitIgnore = false
+		case ".":
+			cwd, _ := os.Getwd()
+			UserArgs.path = cwd
+		default:
+			if !prevArgBinding {
+				UserArgs.path = arg
+			}
+		}
+	}
+}
+
+func normalizePathString(path string) string {
+	path = strings.Trim(path, `"'`)
+	path = filepath.FromSlash(path)
+	path = filepath.Clean(path)
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		slog.Error("Error normalizing path")
+	}
+	return abs
 }
